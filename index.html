@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🀄 智能麻將計數機 (自動計價版)</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #e74c3c;
+            --green: #27ae60;
+            --bg: #f0f2f5;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); padding: 20px; max-width: 800px; margin: 0 auto; }
+        h1, h2, h3 { color: var(--primary); text-align: center; margin-bottom: 15px; }
+        
+        /* 價目表 */
+        .price-table { width: 100%; font-size: 12px; margin-bottom: 15px; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #ddd; }
+        .price-table th { background: #34495e; color: white; padding: 5px; }
+        .price-table td { padding: 5px; text-align: center; border-bottom: 1px solid #eee; }
+
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        /* 輸入與按鈕 */
+        select, input { width: 100%; padding: 12px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; background-color: #fff; }
+        label { font-weight: bold; color: #34495e; font-size: 14px; display: block; margin-top: 5px; }
+        
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 10px; transition: 0.2s; }
+        .btn-primary { background: var(--primary); color: white; box-shadow: 0 4px 0 #1a252f; }
+        .btn-primary:active { transform: translateY(2px); box-shadow: 0 2px 0 #1a252f; }
+        .btn-reset { background: #95a5a6; color: white; margin-top: 30px; }
+        
+        /* 佈局 */
+        .player-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+        .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; }
+        
+        /* 分數顯示 */
+        .score-box { background: #f8f9fa; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+        .score-val { font-size: 20px; font-weight: bold; display: block; margin-top: 5px; }
+        .win { color: var(--green); }
+        .lose { color: var(--accent); }
+
+        /* 選項按鈕組 */
+        .radio-group { display: flex; gap: 10px; margin-bottom: 15px; background: #eee; padding: 5px; border-radius: 8px; }
+        .radio-group label { margin: 0; padding: 10px; flex: 1; text-align: center; cursor: pointer; border-radius: 6px; transition: 0.2s; background: transparent; color: #7f8c8d; }
+        .radio-group input { display: none; } /* 隱藏原生 radio */
+        .radio-group label:has(input:checked) { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-weight: bold; }
+
+        /* 歷史表格 */
+        table.history { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        table.history th, table.history td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+        table.history th { background-color: #f8f9fa; color: #666; }
+        
+        /* 結算樣式 */
+        .settlement-item { padding: 12px; border-bottom: 1px solid #eee; font-size: 16px; display: flex; justify-content: space-between; align-items: center; }
+        .badge { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-right: 5px; }
+
+        @media (max-width: 600px) {
+            .player-inputs { grid-template-columns: 1fr 1fr; }
+            .dashboard { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🀄 智能麻將計數機</h1>
+
+    <div style="text-align: center; margin-bottom: 10px;">
+        <table class="price-table">
+            <thead><tr><th>番數</th><th>3番</th><th>4番</th><th>5番</th><th>6番</th><th>7番+</th></tr></thead>
+            <tbody>
+                <tr><td>主賠</td><td>$20</td><td>$30</td><td>$50</td><td>$80</td><td>$100</td></tr>
+                <tr><td>閒家</td><td>$10</td><td>$15</td><td>$25</td><td>$40</td><td>$50</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <div class="player-inputs">
+            <input type="text" id="p1" value="玩家 A" onchange="updateUI()">
+            <input type="text" id="p2" value="玩家 B" onchange="updateUI()">
+            <input type="text" id="p3" value="玩家 C" onchange="updateUI()">
+            <input type="text" id="p4" value="玩家 D" onchange="updateUI()">
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="dashboard" id="dashboard"></div>
+    </div>
+
+    <div class="card" style="border-top: 5px solid var(--primary);">
+        <h3>📝 記錄新的一局</h3>
+        
+        <label>本局贏家：</label>
+        <select id="winner"></select>
+
+        <label>番數 (系統自動計價)：</label>
+        <select id="fan-select">
+            <option value="3">3 番 (主$20 / 閒$10)</option>
+            <option value="4">4 番 (主$30 / 閒$15)</option>
+            <option value="5">5 番 (主$50 / 閒$25)</option>
+            <option value="6">6 番 (主$80 / 閒$40)</option>
+            <option value="7">7 番以上 (主$100 / 閒$50)</option>
+        </select>
+        
+        <label>贏牌方式：</label>
+        <div class="radio-group">
+            <label>
+                <input type="radio" name="type" value="zimo" checked onclick="toggleInputMode()"> 
+                自摸 (三家賠)
+            </label>
+            <label>
+                <input type="radio" name="type" value="chuchong" onclick="toggleInputMode()"> 
+                出沖 (包底+閒家半價)
+            </label>
+        </div>
+
+        <div id="chuchong-area" style="display: none;">
+            <label style="color: var(--accent);">⚠️ 誰出沖 (放槍者)？</label>
+            <select id="loser-select"></select>
+        </div>
+
+        <button class="btn-primary" onclick="addRound()">確認記錄</button>
+    </div>
+
+    <div class="card" style="border: 2px solid var(--primary);">
+        <h3>💰 最終結算 (最短還款方案)</h3>
+        <div id="settlement-plan">
+            <p style="text-align: center; color: #7f8c8d;">暫無數據</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>對戰歷史</h3>
+        <table class="history" id="history-table">
+            <thead>
+                <tr>
+                    <th width="15%">局數</th>
+                    <th width="20%">贏家</th>
+                    <th width="30%">詳情</th>
+                    <th>變動</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <button class="btn-reset" onclick="resetAll()">⚠️ 重置所有資料</button>
+
+    <script>
+        let players = [
+            { id: 0, name: '玩家 A', balance: 0, wins: 0 },
+            { id: 1, name: '玩家 B', balance: 0, wins: 0 },
+            { id: 2, name: '玩家 C', balance: 0, wins: 0 },
+            { id: 3, name: '玩家 D', balance: 0, wins: 0 }
+        ];
+        let rounds = [];
+
+        // 價目表配置 (可在此修改價格)
+        const PRICE_TABLE = {
+            3: { base: 20, half: 10 },
+            4: { base: 30, half: 15 },
+            5: { base: 50, half: 25 },
+            6: { base: 80, half: 40 },
+            7: { base: 100, half: 50 } // 7番及以上
+        };
+
+        window.onload = function() {
+            updateUI();
+            toggleInputMode();
+        };
+
+        function updateUI() {
+            players[0].name = document.getElementById('p1').value;
+            players[1].name = document.getElementById('p2').value;
+            players[2].name = document.getElementById('p3').value;
+            players[3].name = document.getElementById('p4').value;
+            
+            renderDashboard();
+            updateSelectOptions();
+            calculateSettlement();
+            renderHistory();
+        }
+
+        function updateSelectOptions() {
+            const winnerSelect = document.getElementById('winner');
+            const loserSelect = document.getElementById('loser-select');
+            
+            const oldWinner = winnerSelect.value;
+            const oldLoser = loserSelect.value;
+
+            winnerSelect.innerHTML = '';
+            loserSelect.innerHTML = '';
+
+            players.forEach((p, index) => {
+                let option = new Option(p.name, index);
+                winnerSelect.add(option);
+                loserSelect.add(option.cloneNode(true));
+            });
+
+            if (oldWinner) winnerSelect.value = oldWinner;
+            if (oldLoser) loserSelect.value = oldLoser;
+        }
+
+        function toggleInputMode() {
+            const type = document.querySelector('input[name="type"]:checked').value;
+            const area = document.getElementById('chuchong-area');
+            if (type === 'zimo') {
+                area.style.display = 'none';
+            } else {
+                area.style.display = 'block';
+            }
+        }
+
+        function renderDashboard() {
+            const dashboard = document.getElementById('dashboard');
+            dashboard.innerHTML = '';
+            players.forEach(p => {
+                const colorClass = p.balance >= 0 ? 'win' : 'lose';
+                const sign = p.balance > 0 ? '+' : '';
+                dashboard.innerHTML += `
+                    <div class="score-box">
+                        <div style="font-size:14px; color:#555;">${p.name}</div>
+                        <div class="score-val ${colorClass}">${sign}${p.balance}</div>
+                    </div>
+                `;
+            });
+        }
+
+        function addRound() {
+            const winnerIdx = parseInt(document.getElementById('winner').value);
+            const fanInput = parseInt(document.getElementById('fan-select').value);
+            const type = document.querySelector('input[name="type"]:checked').value;
+            
+            // 取得價格
+            const price = PRICE_TABLE[fanInput] || PRICE_TABLE[7];
+            const basePay = price.base; // 主賠金額
+            const halfPay = price.half; // 閒家賠金額
+
+            let changes = [0, 0, 0, 0];
+            let desc = '';
+            let fanText = fanInput >= 7 ? "7番+" : `${fanInput}番`;
+
+            if (type === 'zimo') {
+                // 自摸：三家都付 basePay
+                desc = `<span class="badge">自摸</span> ${fanText}`;
+                let totalWin = 0;
+                players.forEach((p, i) => {
+                    if (i !== winnerIdx) {
+                        changes[i] = -basePay;
+                        totalWin += basePay;
+                    }
+                });
+                changes[winnerIdx] = totalWin;
+
+            } else {
+                // 出沖：放槍者付 basePay，其餘兩家付 halfPay
+                const loserIdx = parseInt(document.getElementById('loser-select').value);
+                if (winnerIdx === loserIdx) { alert('贏家和放槍者不能是同一人'); return; }
+
+                desc = `<span class="badge">出沖</span> ${fanText}`;
+                let totalWin = 0;
+
+                players.forEach((p, i) => {
+                    if (i === winnerIdx) {
+                        // 稍後結算
+                    } else if (i === loserIdx) {
+                        // 放槍者 (全額)
+                        changes[i] = -basePay;
+                        totalWin += basePay;
+                    } else {
+                        // 閒家 (半價)
+                        changes[i] = -halfPay;
+                        totalWin += halfPay;
+                    }
+                });
+                changes[winnerIdx] = totalWin;
+            }
+
+            // 寫入數據
+            rounds.push({
+                id: rounds.length + 1,
+                winnerIdx: winnerIdx,
+                changes: changes,
+                desc: desc,
+                detail: type === 'chuchong' ? `放槍: ${players[document.getElementById('loser-select').value].name}` : ''
+            });
+
+            players[winnerIdx].wins += 1;
+            players.forEach((p, i) => {
+                p.balance += changes[i];
+            });
+
+            renderDashboard();
+            renderHistory();
+            calculateSettlement();
+        }
+
+        function renderHistory() {
+            const tbody = document.querySelector('#history-table tbody');
+            tbody.innerHTML = '';
+            [...rounds].reverse().forEach(r => {
+                const row = tbody.insertRow();
+                
+                // 構建分數變動字串
+                let changeHtml = '';
+                players.forEach((p, i) => {
+                    if (r.changes[i] !== 0) {
+                        const val = r.changes[i] > 0 ? `+${r.changes[i]}` : r.changes[i];
+                        const color = r.changes[i] > 0 ? '#27ae60' : '#c0392b';
+                        // 只顯示有變動的人，簡化顯示
+                        changeHtml += `<div style="color:${color}; font-size:12px;">${p.name}: ${val}</div>`;
+                    }
+                });
+
+                row.innerHTML = `
+                    <td>#${r.id}</td>
+                    <td style="font-weight:bold; color: var(--primary);">${players[r.winnerIdx].name}</td>
+                    <td>
+                        <div>${r.desc}</div>
+                        <div style="font-size:11px; color:#888;">${r.detail}</div>
+                    </td>
+                    <td>${changeHtml}</td>
+                `;
+            });
+        }
+
+        function calculateSettlement() {
+            const container = document.getElementById('settlement-plan');
+            let debtors = [];
+            let creditors = [];
+
+            players.forEach(p => {
+                if(p.balance < 0) debtors.push({ name: p.name, amount: p.balance });
+                if(p.balance > 0) creditors.push({ name: p.name, amount: p.balance });
+            });
+
+            if (debtors.length === 0 && creditors.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--green);">帳目結清</p>';
+                return;
+            }
+
+            let html = '';
+            debtors.sort((a, b) => a.amount - b.amount);
+            creditors.sort((a, b) => b.amount - a.amount);
+
+            let i = 0, j = 0;
+            while (i < debtors.length && j < creditors.length) {
+                let debtor = debtors[i];
+                let creditor = creditors[j];
+                let amount = Math.min(Math.abs(debtor.amount), creditor.amount);
+
+                if (amount > 0) {
+                    html += `
+                        <div class="settlement-item">
+                            <span style="color:var(--accent); font-weight:bold;">${debtor.name}</span>
+                            <span style="color:#95a5a6; font-size:12px;">給</span>
+                            <span style="color:var(--green); font-weight:bold;">${creditor.name}</span>
+                            <span style="font-weight:bold; background:#2c3e50; color:white; padding:2px 8px; border-radius:4px;">$${amount}</span>
+                        </div>
+                    `;
+                }
+
+                debtor.amount += amount;
+                creditor.amount -= amount;
+
+                if (Math.abs(debtor.amount) < 0.01) i++;
+                if (creditor.amount < 0.01) j++;
+            }
+            container.innerHTML = html;
+        }
+
+        function resetAll() {
+            if(!confirm("確定要重置所有戰績嗎？")) return;
+            rounds = [];
+            players.forEach(p => { p.balance = 0; p.wins = 0; });
+            updateUI();
+        }
+    </script>
+</body>
+</html>
